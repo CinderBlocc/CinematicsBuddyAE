@@ -1,7 +1,7 @@
 ﻿//Written by: SwiFT EQ and CinderBlock
 
 /*
-    TODO:
+    @TODO:
         - Create a plane with a grid effect to act as the ground
         - Add text above both goals saying Blue Goal and Orange Goal so it's easy to verify timeline alignment of track
         - Multiply floor grid scales by 2.54?
