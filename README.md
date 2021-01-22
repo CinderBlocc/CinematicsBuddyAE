@@ -1,2 +1,2 @@
 # CinematicsBuddyAE
-After Effects camera import script for CinematicsBuddy
+Repo for After Effects segment of CinematicsBuddy
