@@ -1,6 +1,17 @@
 ﻿//Written by: SwiFT EQ and CinderBlock
 //Version 1.0
-//Compatible with Cinematics Buddy version 0.9.4
+//Compatible with Cinematics Buddy version 0.9.9
+//This is written in C++ style because that's what I know.
+//Sorry to any Javascript devs who try reading this.
+
+
+
+/*
+    
+    TODO:
+        - Make ProgressBar an object in main() that gets passed to the functions
+    
+*/
 
 
 // GLOBAL VARIABLES //
@@ -10,9 +21,406 @@ var OrangeColor = [0.95, 0.55, 0.2];
 // RUN THE SCRIPT //
 main();
 
+function main()
+{
+    app.beginUndoGroup("CinematicsBuddyAE Import");
+    
+    
+    TestProgressBar();
+    //Create the FileData object. Contains all lines from file, and current line index
+    //var FileData = GetFileData();
+    //if(FileData.bSuccess == true)
+    //{
+        //Collect metadata and cars seen. Update current line index in FileData
+        //var HeaderData = GetHeaderData(FileData);
+        
+        //Collect arrays of keyframe data, starting from current line index in FileData
+        //var KeyframeData = GetKeyframeData(FileData, HeaderData);
+        
+        //Create camera and layers and apply keyframe data
+        //ApplyKeyframeData(KeyframeData);
+    //}
+    
+    app.endUndoGroup();
+}
+
+function TestProgressBar()
+{
+    //Number of steps in the test
+    var NumMainSteps = 3;
+    var NumSubSteps = 5;
+    
+    //Create the dialog
+    ProgressDialog(NumMainSteps);
+    
+    //Iterate through main steps
+    for(var i = 0; i < NumMainSteps; ++i)
+    {
+        //Indicate the current main step and reset the sub bar
+        ProgressDialog.MainMessage("Doing main step " + i);
+        ProgressDialog.SetSubSteps(NumSubSteps + i);
+        
+        //Iterate through sub steps
+        for(var j = 0; j < NumSubSteps + i; ++j)
+        {
+            alert(i + ", " + j);
+            ProgressDialog.IncrementSub();
+        }
+        
+        //Move to the next main step
+        ProgressDialog.IncrementMain();
+    }
+    
+    //Progress is complete. Close dialog
+    ProgressDialog.Close();
+}
+function ProgressDialog(MainSteps)
+{
+    if(MainSteps <= 0)
+    {
+        return;
+    }
+    
+    var TheWindow;
+    var MainLabel;
+    var MainBar;
+    var SubLabel;
+    var SubBar;
+
+    //Create the dialog box
+    TheWindow = new Window("palette", "Progress", undefined, {closeButton: true});
+    
+    //Create the label and progress bar for the main steps
+    MainLabel = TheWindow.add("statictext");
+    MainLabel.preferredSize = [450, -1];
+    MainBar = TheWindow.add("progressbar", undefined, 0, MainSteps);
+    MainBar.preferredSize = [450, -1];
+
+    //Create the label and progress bar for the sub steps
+    //SubBar is defaulted to 100 steps, but should be set using SetSubSteps
+    SubLabel = TheWindow.add("statictext");
+    SubLabel.preferredSize = [450, -1];
+    SubBar = TheWindow.add("progressbar", undefined, 0, 100);
+    SubBar.preferredSize = [450, -1];
+
+    // MEMBER FUNCTIONS //
+    ProgressDialog.IncrementMain = function()
+    {
+        ++MainBar.value;
+    };
+
+    ProgressDialog.IncrementSub = function()
+    {
+        ++SubBar.value;
+    };
+
+    ProgressDialog.MainMessage = function(message)
+    {
+        MainLabel.text = message;
+    };
+
+    ProgressDialog.SubMessage = function(message)
+    {
+        SubLabel.text = message;
+    };
+
+    ProgressDialog.SetSubSteps = function(SubSteps)
+    {
+        SubBar.maxvalue = SubSteps;
+        SubBar.value = 0;
+    }
+
+    ProgressDialog.Close = function()
+    {
+        TheWindow.close();
+    };
+
+    //Open the window
+    TheWindow.show();
+}
+
+function GetFileData()
+{
+    //Create object to return later
+    var FileData = new Object();
+    FileData.bSuccess = false;
+    FileData.Lines = new Object();
+    FileData.CurrentLine = 0;
+    
+    //Get the current active comp
+    var MyComp = app.project.activeItem;
+    if(MyComp == null)
+    {
+        alert("No selected comp");
+        return FileData;
+    }
+
+    //Get user's file selection
+    var ChosenFile = File.openDialog("Choose a Cinematics Buddy export file");
+
+    //Read the file, then close it
+    var TheData = new Object();
+    if(ChosenFile && ChosenFile.open("r"))
+    {
+        TheData = ChosenFile.read();        
+        ChosenFile.close();
+    }
+    else
+    {
+        //File was either not selected or unable to be opened
+        alert("Invalid file");
+        return FileData;
+    }
+
+    //Split entire file into its individual lines
+    var AsString = TheData.toString();
+    
+    var PreprocessingTimer = Date.now();
+    var Preprocessed = PreprocessFile(AsString);
+    var PreTimer1 = Date.now() - PreprocessingTimer;
+    
+    var PreprocessingTimer2 = Date.now();
+    var Preprocessed2 = PreprocessFile2(AsString);
+    var PreTimer2 = Date.now() - PreprocessingTimer2;
+    
+    alert("Preprocessing1: " + PreTimer1 + "ms" + "\n" + "Preprocessing2: " + PreTimer2 + "ms");
+    
+    //FileData.Lines = AsSplit;
+    FileData.bSuccess = true;
+    
+    return FileData;
+}
+
+function GetHeaderData(FileData)
+{
+    //Initialize HeaderData object
+    var HeaderData = new Object();
+    HeaderData.RecordingMetadata = GetRecordingMetadata(FileData);
+    HeaderData.ReplayMetadata = GetReplayMetadata(FileData);
+    HeaderData.CarsSeen = GetCarsSeen(FileData);    
+    
+    SkipToKeyframes(FileData);
+    
+    alert("Keyframes beginning on line " + FileData.CurrentLine);
+    
+    return HeaderData;
+}
+
+
+
+
+// UTILITY FUNCTIONS //
+function PreprocessFile(InString)
+{
+    var Output = [];
+    
+    //Get all header info
+    var IdxStart = 0;
+    var IdxEnd = InString.indexOf("\n", InString.indexOf("BEGIN ANIMATION"));
+    Output.push(InString.substring(IdxStart, IdxEnd));
+    
+    //Reset index start to the beginning of the keyframes
+    IdxStart = IdxEnd;
+    
+    //Split all keyframes into separate substrings
+    var bIsSplitting = true;
+    var bHaveKeyframe = false;
+    var StackLevel = 0;
+    var KeyframesFound = 0;
+    while(bIsSplitting === true)
+    {
+        ++IdxEnd;
+        if(IdxEnd >= InString.length)
+        {
+            IdxEnd = InString.length;
+            bIsSplitting = false;
+            
+            //Sometimes final line is empty. Don't count it as a keyframe
+            if(InString[IdxEnd] != "")
+            {
+                bHaveKeyframe = true;
+            }
+        }
+        
+        //Stack match braces until a full keyframe is found
+        if(InString[IdxEnd] === '{')
+        {
+            ++StackLevel;
+        }
+        else if(InString[IdxEnd] === '}')
+        {
+            --StackLevel;
+            if(StackLevel === 0)
+            {
+                bHaveKeyframe = true;
+            }
+        }
+        
+        //Put the whole keyframe into a substring and push to the array
+        if(bHaveKeyframe === true)
+        {
+            ++KeyframesFound;
+            
+            Output.push(InString.substring(IdxStart, IdxEnd)); //TODO: The last empty line is counting as a keyframe. Fix that
+            
+            IdxStart = IdxEnd + 1;
+            if(IdxStart >= InString.length)
+            {
+                break;
+            }
+        }
+        
+        bHaveKeyframe = false;
+    }
+
+    //alert("Preprocess1 found " + KeyframesFound + " keyframes");
+    //alert(Output[Output.length - 1]);
+
+    return Output;
+}
+
+function RemoveWhitespace(InString)
+{
+    return InString.replace(/^\s+|\s+$/g,'');
+}
+
+function GetSplitHeaderLine(ThisLine)
+{
+    var SplitLine = ThisLine.split(":");
+    
+    var Output = new Object();
+    Output.Label = SplitLine[0];
+    Output.Data = RemoveWhitespace(SplitLine.slice(1, SplitLine.length).join());
+    
+    return Output;
+}
+
+function GetRecordingMetadata(FileData)
+{
+    var RecordingMetadata = new Object();
+    RecordingMetadata.Version    = "";
+    RecordingMetadata.Camera     = "";
+    RecordingMetadata.AverageFPS = -1.0;
+    RecordingMetadata.Frames     = -1;
+    RecordingMetadata.Duration   = -1.0;
+    
+    alert("STARTING RECORDING METADATA");
+    bHeaderLine = true;
+    while(FileData.CurrentLine < FileData.Lines.length)
+    {
+        if(bHeaderLine == false)
+        {
+            var ThisLine = FileData.Lines[FileData.CurrentLine];
+            if(ThisLine === "")
+            {
+                ++FileData.CurrentLine;
+                break;
+            }
+            
+            //Get the individual data points
+            var SplitLine = GetSplitHeaderLine(ThisLine);
+            if(SplitLine.Label.indexOf("Version") > -1)          { RecordingMetadata.Version    = SplitLine.Data;             }
+            else if(SplitLine.Label.indexOf("Camera") > -1)      { RecordingMetadata.Camera     = SplitLine.Data;             }
+            else if(SplitLine.Label.indexOf("Average FPS") > -1) { RecordingMetadata.AverageFPS = parseFloat(SplitLine.Data); }
+            else if(SplitLine.Label.indexOf("Frames") > -1)      { RecordingMetadata.Frames     = parseInt(SplitLine.Data);   }
+            else if(SplitLine.Label.indexOf("Duration") > -1)    { RecordingMetadata.Duration   = parseFloat(SplitLine.Data); }
+        }
+        
+        bHeaderLine = false;
+        ++FileData.CurrentLine;
+    }
+
+    return RecordingMetadata;
+}
+
+function GetReplayMetadata(FileData)
+{
+    var ReplayMetadata = new Object();
+    ReplayMetadata.Name    = "";
+    ReplayMetadata.ID      = "";
+    ReplayMetadata.TheDate = "";
+    ReplayMetadata.FPS     = -1;
+    ReplayMetadata.Frames  = -1;
+    
+    alert("STARTING REPLAY METADATA");
+    bHeaderLine = true;
+    while(FileData.CurrentLine < FileData.Lines.length)
+    {
+        if(bHeaderLine == false)
+        {
+            var ThisLine = FileData.Lines[FileData.CurrentLine];
+            if(ThisLine === "")
+            {
+                ++FileData.CurrentLine;
+                break;
+            }
+            
+            //Get the individual data points
+            var SplitLine = GetSplitHeaderLine(ThisLine);
+            if(SplitLine.Label.indexOf("Name") > -1)        { ReplayMetadata.Name    = SplitLine.Data;           }
+            else if(SplitLine.Label.indexOf("ID") > -1)     { ReplayMetadata.ID      = SplitLine.Data;           }
+            else if(SplitLine.Label.indexOf("Date") > -1)   { ReplayMetadata.TheDate = SplitLine.Data;           }
+            else if(SplitLine.Label.indexOf("FPS") > -1)    { ReplayMetadata.FPS     = parseInt(SplitLine.Data); }
+            else if(SplitLine.Label.indexOf("Frames") > -1) { ReplayMetadata.Frames  = parseInt(SplitLine.Data); }
+        }
+        
+        bHeaderLine = false;
+        ++FileData.CurrentLine;
+    }
+
+    return ReplayMetadata;
+}
+
+function GetCarsSeen(FileData)
+{
+    var CarsSeen = [];
+    var CurrentCar = new Object();
+    
+    alert("STARTING CARS SEEN");
+    bHeaderLine = true;
+    while(FileData.CurrentLine < FileData.Lines.length)
+    {
+        if(bHeaderLine == false)
+        {
+            var ThisLine = FileData.Lines[FileData.CurrentLine];
+            if(ThisLine === "")
+            {
+                ++FileData.CurrentLine;
+                return;
+            }
+        }
+        
+        bHeaderLine = false;
+        ++FileData.CurrentLine;
+    }
+
+    return CarsSeen;
+}
+
+function SkipToKeyframes(FileData)
+{
+    alert("SKIPPING TO KEYFRAMES");
+    while(FileData.CurrentLine < FileData.Lines.length)
+    {
+        var ThisLine = FileData.Lines[FileData.CurrentLine];
+
+        //Skip through all the lines until it finds the keyframe section
+        if(ThisLine.indexOf("BEGIN ANIMATION") > -1)
+        {
+            return;
+        }
+        
+        ++FileData.CurrentLine;
+    }
+}
+
+
+
+
+
 
 // MAIN FUNCTION //
-function main()
+function oldmain()
 {
     app.beginUndoGroup("CinematicsBuddyAE Import");
 
