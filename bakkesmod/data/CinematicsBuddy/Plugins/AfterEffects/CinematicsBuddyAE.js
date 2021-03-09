@@ -2,6 +2,13 @@
 //Version 1.0
 //Compatible with Cinematics Buddy version 0.9.9
 
+/*
+
+	TODO:
+		- Progress bar seems to lag behind and freeze up, then magically finish the process
+			- Make progress bar less intensive so it can keep up with script execution
+
+*/
 
 // GLOBAL VARIABLES //
 ProgressDialog();
@@ -105,8 +112,6 @@ function main()
         return;
     }
     
-    //var MainTimerStart = Date.now(); // TODO: Remove when done
-    
     //Create the FileData object. Contains all lines from file, and current line index
     var FileData = GetFileData();
     if(FileData.bSuccess == true)
@@ -116,34 +121,26 @@ function main()
         ProgressDialog.Show();
         
         //Collect header metadata
-        //var TimerStart = Date.now();
         var HeaderData = GetHeaderData(FileData.HeaderString);
-        //alert("Header parsing took " + (Date.now() - TimerStart) + " ms");
         
         //Collect keyframes as chunks of strings
-        //TimerStart = Date.now();
         var KeyframeStrings = SplitKeyframes(FileData.KeyframeStrings, parseInt(HeaderData.RecordingMetadata.Frames));
-        //alert("Splitting keyframes took " + (Date.now() - TimerStart) + " ms");
 
         //Collect arrays of keyframe data, starting from current line index in FileData
-        //TimerStart = Date.now();
         var Keyframes = GetKeyframes(KeyframeStrings);
-        //alert("Parsing keyframes took " + (Date.now() - TimerStart) + " ms");
         
         //Compile all of the keyframes into individual arrays
-        TimerStart = Date.now();
         var Arrays = GetKeyframeArrays(Keyframes);
-        alert("Compiling keyframes took " + (Date.now() - TimerStart) + " ms");
         
         //Create camera and layers and apply keyframe data
-        TimerStart = Date.now();
-        ApplyKeyframes(Arrays);
-        alert("Applying keyframes took " + (Date.now() - TimerStart) + " ms");
+        ApplyKeyframes(Arrays, HeaderData);
         
+        //Return version number upon successful completion
         ProgressDialog.Close();
+        return "Version: " + HeaderData.RecordingMetadata.Version;
     }
 
-    //alert("Script execution took " + (Date.now() - MainTimerStart) + " ms");
+    return "Failed to open txt file";
 }
 
 function GetFileData()
@@ -204,7 +201,7 @@ function GetHeaderData(TheHeader)
     
     //Get CarsSeen
     ProgressDialog.SubMessage("Getting Cars Seen");
-    HeaderData.CarsSeen = GetCarsSeen(HeaderData); // TODO: Properly parse cars seen
+    HeaderData.CarsSeen = GetCarsSeen(HeaderData);
     ProgressDialog.IncrementSub();
     
     ProgressDialog.IncrementMain();
@@ -307,13 +304,13 @@ function GetKeyframeArrays(Keyframes)
     Arrays.Time = [];
     
     //Camera arrays
+    Arrays.CameraFOV = [];
     Arrays.CameraLocationX = [];
     Arrays.CameraLocationY = [];
     Arrays.CameraLocationZ = [];
     Arrays.CameraRotationX = [];
     Arrays.CameraRotationY = [];
     Arrays.CameraRotationZ = [];
-    Arrays.CameraFOV = [];
     
     //Ball arrays
     Arrays.BallLocationX = [];
@@ -330,10 +327,7 @@ function GetKeyframeArrays(Keyframes)
         Arrays.Time.push(Keyframes[i].Time.Time);
         
         //Camera
-        var Test1 = Keyframes[i];
-        var Test2 = Keyframes[i].Camera;
-        var Test3 = Keyframes[i].Camera.Location;
-        var Test4 = Keyframes[i].Camera.Location.X;
+        Arrays.CameraFOV.push(Keyframes[i].Camera.FOV);
         Arrays.CameraLocationX.push(Keyframes[i].Camera.Location.X);
         Arrays.CameraLocationY.push(Keyframes[i].Camera.Location.Y);
         Arrays.CameraLocationZ.push(Keyframes[i].Camera.Location.Z);
@@ -358,19 +352,40 @@ function GetKeyframeArrays(Keyframes)
     return Arrays;
 }
 
-function ApplyKeyframes(Arrays)
+function ApplyKeyframes(Arrays, HeaderData)
 {
     ProgressDialog.MainMessage("Applying keyframes");
+    ProgressDialog.SetSubMaxValue(2);
     
     //Start an undo group so that all composition changes can be undone easily
     app.beginUndoGroup("CinematicsBuddyAE Import");
     
-    /*
-        
-        CREATE OBJECTS HERE AND APPLY THE ARRAYS
+    //Create reference grids, camera, and other necessary objects
+    ProgressDialog.SubMessage("Creating objects");
+    var MyComp = app.project.activeItem;
+    var Objects = CreateCompObjects(MyComp, HeaderData);
+    var CameraLayer = Objects.CameraLayer;
+    var BallLayer = Objects.BallLayer;
+    ProgressDialog.IncrementSub();
     
-    */
+    //Apply the arrays
+    ProgressDialog.SubMessage("Applying arrays");
+    CameraLayer.property("Camera Options").property("Zoom").setValuesAtTimes(  Arrays.Time, Arrays.CameraFOV        );
+    CameraLayer.property("Transform").property("X Position").setValuesAtTimes( Arrays.Time, Arrays.CameraLocationX  );
+    CameraLayer.property("Transform").property("Y Position").setValuesAtTimes( Arrays.Time, Arrays.CameraLocationY  );
+    CameraLayer.property("Transform").property("Z Position").setValuesAtTimes( Arrays.Time, Arrays.CameraLocationZ  );
+    CameraLayer.property("Transform").property("X Rotation").setValuesAtTimes( Arrays.Time, Arrays.CameraRotationX  );
+    CameraLayer.property("Transform").property("Y Rotation").setValuesAtTimes( Arrays.Time, Arrays.CameraRotationY  );
+    CameraLayer.property("Transform").property("Z Rotation").setValuesAtTimes( Arrays.Time, Arrays.CameraRotationZ  );
+    BallLayer.property("Transform").property("X Position").setValuesAtTimes(   Arrays.Time, Arrays.BallLocationX    );
+    BallLayer.property("Transform").property("Y Position").setValuesAtTimes(   Arrays.Time, Arrays.BallLocationY    );
+    BallLayer.property("Transform").property("Z Position").setValuesAtTimes(   Arrays.Time, Arrays.BallLocationZ    );
+    BallLayer.property("Transform").property("X Rotation").setValuesAtTimes(   Arrays.Time, Arrays.BallRotationX    );
+    BallLayer.property("Transform").property("Y Rotation").setValuesAtTimes(   Arrays.Time, Arrays.BallRotationY    );
+    BallLayer.property("Transform").property("Z Rotation").setValuesAtTimes(   Arrays.Time, Arrays.BallRotationZ    );
+    ProgressDialog.IncrementSub();
     
+    //End undo group
     app.endUndoGroup();
     ProgressDialog.IncrementMain();
 }
@@ -419,13 +434,13 @@ function ParseVector(VectorString)
 
 function ParseQuat(QuatString)
 {
-    //Converts quaternion XYZW into Euler rotation XYZ
+    //Converts quaternion WXYZ into Euler rotation XYZ
     //https://www.euclideanspace.com/maths/geometry/rotations/conversions/quaternionToEuler/
     var QuatVals = QuatString.split(",");
-    var qX = parseFloat(QuatVals[0]);
-    var qY = parseFloat(QuatVals[1]);
-    var qZ = parseFloat(QuatVals[2]);
-    var qW = parseFloat(QuatVals[3]);
+    var qW = parseFloat(QuatVals[0]);
+    var qX = parseFloat(QuatVals[1]);
+    var qY = parseFloat(QuatVals[2]);
+    var qZ = parseFloat(QuatVals[3]);
     
     //Pitch
     var H1 = (2 * qY * qW) - (2 * qX * qZ);
@@ -550,7 +565,7 @@ function GetCarsSeen(HeaderData)
     
         /*
             
-            STACK MATCH BRACES AND STORE INFO FOR EACH CAR
+            TODO: Parse cars seen in case cars are ever added to this parser
             
         */
     }
@@ -665,10 +680,21 @@ function GetCameraData(Keyframe, Lines)
         //Get location, rotation, and FOV
         if(SplitLine.Label == "L")      { CameraData.Location = ParseVector(SplitLine.Data); }
         else if(SplitLine.Label == "R") { CameraData.Rotation = ParseQuat(SplitLine.Data);   }
-        else if(SplitLine.Label == "F") { CameraData.FOV = parseFloat(SplitLine.Data);       }
+        else if(SplitLine.Label == "F") { CameraData.FOV = GetZoom(SplitLine.Data);       }
     }
     
     return CameraData;
+}
+
+function GetZoom(InFOV)
+{
+    var TheComp = app.project.activeItem;
+    var AspectRatio = TheComp.width / TheComp.height;
+    var FOV = parseFloat(InFOV);
+    var FOVRads = (FOV / 2) * (Math.PI / 180);
+    var Zoom = TheComp.width / (2 * Math.tan(FOVRads));
+    
+    return Zoom;
 }
 
 function GetTimeData(Keyframe, Lines)
@@ -798,179 +824,8 @@ function GetWheelData(ThisLine)
 //
 
 
-
-
-
-
-// MAIN FUNCTION //
-function oldmain()
-{
-    app.beginUndoGroup("CinematicsBuddyAE Import");
-
-    //Get the current active comp
-    var MyComp = app.project.activeItem;
-    if(MyComp == null)
-    {
-        alert("No selected comp");
-        app.endUndoGroup();
-        return;
-    }
-
-    //Create objects and get a handle to the camera
-    var Objects = CreateCompObjects(MyComp);
-    var CameraLayer = Objects.CameraLayer;
-    var BallLayer = Objects.BallLayer;
-    
-    //Get user's file selection
-    var ChosenFile = File.openDialog("Choose a Cinematics Buddy export file");
-
-    //Read the file, then close it
-    if(ChosenFile && ChosenFile.open("r"))
-    {
-        var data = ChosenFile.read();        
-        ChosenFile.close();
-    }
-    else
-    {
-        //File was either not selected or unable to be opened
-        alert("Invalid file");
-        RemoveCompObjects(Objects);
-        app.endUndoGroup();
-        return;
-    }
-
-    //Split entire file into its individual lines
-    var Lines = data.toString().split("\n");
-
-    //Prepare for parsing lines
-    var bFirstLine = true;
-    var bReadingHeader = true;
-    var VersionNumber = "";
-    var CameraName = "";
-    var TimeSkip = 0;
-    var CompTime = 0;
-    var TimeArray = [];
-    var CamZoomArray = [];
-    var CamPosXArray = [];
-    var CamPosYArray = [];
-    var CamPosZArray = [];
-    var CamRotXArray = [];
-    var CamRotYArray = [];
-    var CamRotZArray = [];
-    var BallPosXArray = [];
-    var BallPosYArray = [];
-    var BallPosZArray = [];
-    var BallRotXArray = [];
-    var BallRotYArray = [];
-    var BallRotZArray = [];
-    
-    //Parse all the lines to get useful data
-    for(i = 0; i < Lines.length; ++i)
-    {
-        var ThisLine = Lines[i];
-        
-        //Check the first line to see if it is a valid CB file. Get the version number from it
-        if(bFirstLine)
-        {
-            bFirstLine = false;
-            if(ThisLine.indexOf("Version:") == -1)
-            {
-                alert("File is not a CinematicsBuddy file. First line needs to have Version:");
-                RemoveCompObjects(Objects);
-                app.endUndoGroup();
-                return;
-            }
-            
-            var VersionNumberSplit = ThisLine.split(" ");
-            VersionNumber = VersionNumberSplit.slice(1, VersionNumberSplit.length).join();
-            continue;
-        }
-        
-        //Read all the other lines to either get metadata or keyframes
-        if(bReadingHeader)
-        {
-            //Not yet past the header. Get metadata
-            //Check if line contains "Camera:". Pull the camera name from that line
-            if(ThisLine.indexOf("Camera:") > -1)
-            {
-                var CameraNameSplit = ThisLine.split(" ");
-                CameraLayer.name = CameraNameSplit.slice(1, CameraNameSplit.length).join();
-                continue;
-            }
-            
-            //Check if line contains "Framerate:". Calculate TimeSkip from that line
-            if(ThisLine.indexOf("Framerate:") > -1)
-            {
-                var FrameRate = parseInt(ThisLine.split(" ").slice(1, 3).join());
-                var CompFramerate = 1 / MyComp.frameDuration;
-                var Subframes = FrameRate / CompFramerate;
-                TimeSkip = MyComp.frameDuration / Subframes;
-                continue;
-            }
-            
-            //Check if line contains "Timestamp". This is the final header line and should be skipped
-            if(ThisLine.indexOf("Timestamp") > -1)
-            {
-                bReadingHeader = false;
-                continue;
-            }
-        }
-        else
-        {
-            //Already past the header. Get all the keyframe data and check if the file is done
-            //Check if line contains "END". Remove last empty line
-            if(ThisLine.indexOf("END") > -1)
-            {
-                break;
-            }
-
-            //Get the keyframe data and add to arrays
-            var LineToConvert = ThisLine.split("\t").slice(3, 10).join();
-            Keyframe = ConvertKeyframeData(LineToConvert, MyComp);
-            
-            CamZoomArray.push(Keyframe.CamZoom);
-            CamPosXArray.push(Keyframe.CamPosX);
-            CamPosYArray.push(Keyframe.CamPosY);
-            CamPosZArray.push(Keyframe.CamPosZ);
-            CamRotXArray.push(Keyframe.CamRotX);
-            CamRotYArray.push(Keyframe.CamRotY);
-            CamRotZArray.push(Keyframe.CamRotZ);
-            BallPosXArray.push(Keyframe.BallPosX);
-            BallPosYArray.push(Keyframe.BallPosY);
-            BallPosZArray.push(Keyframe.BallPosZ);
-            BallRotXArray.push(Keyframe.BallRotX);
-            BallRotYArray.push(Keyframe.BallRotY);
-            BallRotZArray.push(Keyframe.BallRotZ);
-            
-            TimeArray.push(CompTime);
-            CompTime += TimeSkip;
-        }
-    }
-
-    //Apply the arrays
-    CameraLayer.property("Camera Options").property("Zoom").setValuesAtTimes( TimeArray, CamZoomArray);
-    CameraLayer.property("Transform").property("X Position").setValuesAtTimes(TimeArray, CamPosXArray);
-    CameraLayer.property("Transform").property("Y Position").setValuesAtTimes(TimeArray, CamPosYArray);
-    CameraLayer.property("Transform").property("Z Position").setValuesAtTimes(TimeArray, CamPosZArray);
-    CameraLayer.property("Transform").property("X Rotation").setValuesAtTimes(TimeArray, CamRotXArray);
-    CameraLayer.property("Transform").property("Y Rotation").setValuesAtTimes(TimeArray, CamRotYArray);
-    CameraLayer.property("Transform").property("Z Rotation").setValuesAtTimes(TimeArray, CamRotZArray);
-    BallLayer.property("Transform").property("X Position").setValuesAtTimes(TimeArray, BallPosXArray);
-    BallLayer.property("Transform").property("Y Position").setValuesAtTimes(TimeArray, BallPosYArray);
-    BallLayer.property("Transform").property("Z Position").setValuesAtTimes(TimeArray, BallPosZArray);
-    BallLayer.property("Transform").property("X Rotation").setValuesAtTimes(TimeArray, BallRotXArray);
-    BallLayer.property("Transform").property("Y Rotation").setValuesAtTimes(TimeArray, BallRotYArray);
-    BallLayer.property("Transform").property("Z Rotation").setValuesAtTimes(TimeArray, BallRotZArray);
-
-    //Clean up and return
-    app.endUndoGroup();
-    return "Version " + VersionNumber;
-}
-
-
-// UTILITY FUNCTIONS //
-//Create camera, plane, and text objects
-function CreateCompObjects(MyComp)
+// KEYFRAME APPLYING //
+function CreateCompObjects(MyComp, HeaderData)
 {
     //Objects are added to layers in reverse order of what's seen here
     //Camera should be created last so it will be on top
@@ -987,12 +842,11 @@ function CreateCompObjects(MyComp)
     Objects.BallLayer = CreateBall(MyComp);
     
     //Camera
-    Objects.CameraLayer = CreateCamera(MyComp);
+    Objects.CameraLayer = CreateCamera(MyComp, HeaderData);
     
     return Objects;
 }
 
-//Create all of the walls, floor, and ceiling reference grids
 function CreateGrids(MyComp, Objects)
 {
     //Floor
@@ -1046,7 +900,6 @@ function CreateGrids(MyComp, Objects)
     Objects.OrangeWallLayer = OrangeWallLayer;
 }
 
-//Create a plane with a grid effect
 function CreateGrid(MyComp, GridName)
 {
     var NewGrid = MyComp.layers.addSolid([1,1,1], GridName, 1000, 1000, 1);
@@ -1071,28 +924,31 @@ function CreateGrid(MyComp, GridName)
     return NewGrid;
 }
 
-//Create camera 
-function CreateCamera(MyComp)
+function CreateCamera(MyComp, HeaderData)
 {
-    var CameraLayer = MyComp.layers.addCamera("UNNAMED CAMERA", [MyComp.width / 2, MyComp.height / 2]);
+    var CameraName = "UNNAMED CAMERA";
+    if(HeaderData.RecordingMetadata.Camera != "")
+    {
+        CameraName = HeaderData.RecordingMetadata.Camera;
+    }
+    
+    var CameraLayer = MyComp.layers.addCamera(CameraName, [MyComp.width / 2, MyComp.height / 2]);
     CameraLayer.autoOrient = AutoOrientType.NO_AUTO_ORIENT;
     CameraLayer.property("Position").dimensionsSeparated = true;
     
     return CameraLayer;
 }
 
-//Create ball
 function CreateBall(MyComp)
 {
     var BallLayer = MyComp.layers.addNull();
-    BallLayer.name = "Ball Null Object";
+    BallLayer.source.name = "Ball Null Object";
     BallLayer.threeDLayer = true;
     BallLayer.property("Position").dimensionsSeparated = true;
     
     return BallLayer;
 }
 
-//Create text label filling blue goal
 function CreateBlueGoalLabel(MyComp)
 {
     var BlueGoalLabel = MyComp.layers.addText("Blue Goal");
@@ -1111,7 +967,6 @@ function CreateBlueGoalLabel(MyComp)
     return BlueGoalLabel;
 }
 
-//Create text label filling orange goal
 function CreateOrangeGoalLabel(MyComp)
 {
     var OrangeGoalLabel = MyComp.layers.addText("Orange Goal");
@@ -1130,7 +985,6 @@ function CreateOrangeGoalLabel(MyComp)
     return OrangeGoalLabel;
 }
 
-//Delete the comp objects
 function RemoveCompObjects(Objects)
 {
     Objects.CameraLayer.remove();
@@ -1144,96 +998,4 @@ function RemoveCompObjects(Objects)
     Objects.BlueGoalLabel.remove();
     Objects.OrangeGoalLabel.remove();
 }
-
-//Convert keyframe data from RL's coordinates to AE's coordinates
-function ConvertKeyframeData(ThisLine, MyComp)
-{
-    //Camera data
-    var CamZoom = GetZoom(ThisLine.split(",").slice(0,1), MyComp);
-    var CamPosition = GetPosition(ThisLine.split(",").slice(1,4));
-    var CamRotation = GetRotation(ThisLine.split(",").slice(4,8));
-    
-    //Ball data (start at 9 because of double tab separator)
-    var BallPosition = GetPosition(ThisLine.split(",").slice(9,12));
-    var BallRotation = GetRotation(ThisLine.split(",").slice(13,17));
-    
-    //Create keyframe
-    var Keyframe = new Object();
-    Keyframe.CamZoom = CamZoom;
-    Keyframe.CamPosX = CamPosition.X;
-    Keyframe.CamPosY = CamPosition.Y;
-    Keyframe.CamPosZ = CamPosition.Z;
-    Keyframe.CamRotX = CamRotation.X;
-    Keyframe.CamRotY = CamRotation.Y;
-    Keyframe.CamRotZ = CamRotation.Z;
-    Keyframe.BallPosX = BallPosition.X;
-    Keyframe.BallPosY = BallPosition.Y;
-    Keyframe.BallPosZ = BallPosition.Z;
-    Keyframe.BallRotX = BallRotation.X;
-    Keyframe.BallRotY = BallRotation.Y;
-    Keyframe.BallRotZ = BallRotation.Z;
-    
-    return Keyframe;
-}
-
-//Zoom
-function GetZoom(InFOV, MyComp)
-{
-    var AspectRatio = MyComp.width / MyComp.height;
-    var FOV = parseFloat(InFOV);
-    var FOVRads = (FOV / 2) * (Math.PI / 180);
-    var Zoom = MyComp.width / (2 * Math.tan(FOVRads));
-    
-    return Zoom;
-}
-
-//Position
-function GetPosition(PositionVals)
-{
-    var Position = new Object();
-    Position.X = parseFloat(PositionVals[1]) *  2.54;
-    Position.Y = parseFloat(PositionVals[2]) * -2.54;
-    Position.Z = parseFloat(PositionVals[0]) *  2.54;
-    
-    return Position;
-}
-
-//Rotation
-function GetRotation(QuatVals)
-{
-    //https://www.euclideanspace.com/maths/geometry/rotations/conversions/quaternionToEuler/
-    
-    var qX = parseFloat(QuatVals[0]);
-    var qY = parseFloat(QuatVals[1]);
-    var qZ = parseFloat(QuatVals[2]);
-    var qW = parseFloat(QuatVals[3]);
-    
-    //Pitch
-    var H1 = (2 * qY * qW) - (2 * qX * qZ);
-    var H2 = 1 - (2 * qY * qY) - (2 * qZ * qZ);
-    var Pitch = Math.atan2(H1, H2);
-    
-    //Yaw
-    var A1 = 2 * qX * qY;
-    var A2 = 2 * qZ * qW;
-    var Yaw = Math.asin(A1 + A2);
-    
-    //Roll
-    var B1 = (2 * qX * qW) - (2 * qY * qZ);
-    var B2 = 1 - (2 * qX * qX) - (2 * qZ * qZ);
-    var Roll = Math.atan2(B1, B2);
-    
-    //Convert from radians to degrees
-    var RadToDeg = 180 / Math.PI;
-    var NewPitch = Pitch * RadToDeg;
-    var NewYaw   = Yaw   * RadToDeg;
-    var NewRoll  = Roll  * RadToDeg;
-    
-    //Output the rotation
-    var Rotation = new Object();
-    Rotation.X = NewPitch * -1;
-    Rotation.Y = NewYaw;
-    Rotation.Z = NewRoll * -1;
-    
-    return Rotation;
-}
+//
