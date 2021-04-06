@@ -7,6 +7,8 @@
 	TODO:
 		- Progress bar seems to lag behind and freeze up, then magically finish the process
 			- Make progress bar less intensive so it can keep up with script execution
+				- Update every 5 or 10 steps?
+				- Reduce number of "TheWindow.update()" calls
 
 */
 
