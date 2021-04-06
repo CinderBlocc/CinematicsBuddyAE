@@ -411,6 +411,7 @@ function GetSplitHeaderLine(ThisLine)
     
     return Output;
 }
+
 function GetSplitKeyframeLine(ThisLine)
 {
     var SplitLine = ThisLine.split(":");
@@ -826,7 +827,7 @@ function GetWheelData(ThisLine)
 //
 
 
-// KEYFRAME APPLYING //
+// COMPOSITION OBJECT CREATION //
 function CreateCompObjects(MyComp, HeaderData)
 {
     //Objects are added to layers in reverse order of what's seen here
