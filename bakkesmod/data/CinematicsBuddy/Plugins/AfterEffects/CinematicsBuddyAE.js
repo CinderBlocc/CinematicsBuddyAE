@@ -10,6 +10,9 @@
 				- Update every 5 or 10 steps?
 				- Reduce number of "TheWindow.update()" calls
 
+		- Add all CarsSeen as null objects
+			- Similar to Maxscript, if the car doesn't have animation for that frame, set it to 0,0,0 in both location and rotation
+				- Maybe also set it's opacity to 0 while it's in an invalid state? Then people could wire their effects to the opacity track
 */
 
 // GLOBAL VARIABLES //
