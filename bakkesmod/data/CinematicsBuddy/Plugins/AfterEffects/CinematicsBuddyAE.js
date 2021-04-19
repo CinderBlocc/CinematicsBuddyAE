@@ -14,7 +14,8 @@
 
 		- Add all CarsSeen as null objects
 			- Similar to Maxscript, if the car doesn't have animation for that frame, set it to 0,0,0 in both location and rotation
-				- Maybe also set it's opacity to 0 while it's in an invalid state? Then people could wire their effects to the opacity track
+                - Maybe also set it's opacity to 0 while it's in an invalid state? Then people could wire their effects to the opacity track
+                - Probably should initialize the whole array of car animations to null first, then give proper values if the keyframe exists for that car
 */
 
 // GLOBAL VARIABLES //
@@ -846,6 +847,9 @@ function CreateCompObjects(MyComp, HeaderData)
     Objects.BlueGoalLabel = CreateBlueGoalLabel(MyComp);
     Objects.OrangeGoalLabel = CreateOrangeGoalLabel(MyComp);
     
+    //Car null objects
+    Objects.CarLayers = CreateCars(MyComp, HeaderData);
+    
     //Ball null object
     Objects.BallLayer = CreateBall(MyComp);
     
@@ -957,6 +961,28 @@ function CreateBall(MyComp)
     return BallLayer;
 }
 
+function CreateCar(MyComp, CarData)
+{
+    var ThisCar = MyComp.layers.addNull();
+    ThisCar.source.name = CarData.CarName;
+    ThisCar.threeDLayer = true;
+    ThisCar.property("Position").dimensionsSeparated = true;
+    
+    return ThisCar;
+}
+
+function CreateCars(MyComp, HeaderData)
+{
+    var CarLayers = [];
+    
+    for(CarSeen in HeaderData.CarsSeen)
+    {
+        CarLayers.push(CreateCar(MyComp, CarSeen));
+    }
+
+    return CarLayers;
+}
+
 function CreateBlueGoalLabel(MyComp)
 {
     var BlueGoalLabel = MyComp.layers.addText("Blue Goal");
@@ -1005,5 +1031,10 @@ function RemoveCompObjects(Objects)
     Objects.OrangeWallLayer.remove();
     Objects.BlueGoalLabel.remove();
     Objects.OrangeGoalLabel.remove();
+    
+    for(CarLayer in Objects.CarLayers)
+    {
+        CarLayer.remove();
+    }
 }
 //
