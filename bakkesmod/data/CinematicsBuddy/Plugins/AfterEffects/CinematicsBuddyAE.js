@@ -5,15 +5,15 @@
 /*
 
 	TODO:
-		- Progress bar seems to lag behind and freeze up, then magically finish the process
-			- Make progress bar less intensive so it can keep up with script execution
-				- Update every 5 or 10 steps?
-				- Reduce number of "TheWindow.update()" calls
+        - Progress bar seems to lag behind and freeze up, then magically finish the process
+            - Make progress bar less intensive so it can keep up with script execution
+                - Update every 5 or 10 steps?
+                - Reduce number of "TheWindow.update()" calls
 
-		- Fix wheel formatting
+        - Fix wheel formatting
 
-		- Add all CarsSeen as null objects
-			- Similar to Maxscript, if the car doesn't have animation for that frame, set it to 0,0,0 in both location and rotation
+        - Add all CarsSeen as null objects
+            - Similar to Maxscript, if the car doesn't have animation for that frame, set it to 0,0,0 in both location and rotation
                 - Maybe also set it's opacity to 0 while it's in an invalid state? Then people could wire their effects to the opacity track
                 - Probably should initialize the whole array of car animations to null first, then give proper values if the keyframe exists for that car
 */
