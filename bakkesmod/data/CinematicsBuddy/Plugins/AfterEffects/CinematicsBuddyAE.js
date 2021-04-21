@@ -1,6 +1,5 @@
 ﻿//Written by: SwiFT EQ and CinderBlock
-//Version 1.0
-//Compatible with Cinematics Buddy version 0.9.9
+//Version 0.9.9
 
 /*
 
@@ -20,6 +19,7 @@
 
 // GLOBAL VARIABLES //
 ProgressDialog();
+ProgressSteps = 20;
 var BlueColor = [0.35, 0.45, 0.9];
 var OrangeColor = [0.95, 0.55, 0.2];
 
@@ -61,10 +61,10 @@ function ProgressDialog()
         TheWindow.update();
     };
 
-    ProgressDialog.IncrementSub = function()
+    ProgressDialog.IncrementSub = function(amount)
     {
-        ++SubBar.value;
-        TheWindow.update();
+        SubBar.value += amount;
+        //TheWindow.update();
     };
 
     ProgressDialog.MainMessage = function(message)
@@ -135,7 +135,7 @@ function main()
         var KeyframeStrings = SplitKeyframes(FileData.KeyframeStrings, parseInt(HeaderData.RecordingMetadata.Frames));
 
         //Collect arrays of keyframe data, starting from current line index in FileData
-        var Keyframes = GetKeyframes(KeyframeStrings);
+        var Keyframes = GetKeyframes(KeyframeStrings, HeaderData);
         
         //Compile all of the keyframes into individual arrays
         var Arrays = GetKeyframeArrays(Keyframes);
@@ -200,17 +200,17 @@ function GetHeaderData(TheHeader)
     //Get RecordingMetadata
     ProgressDialog.SubMessage("Getting Recording Metadata");
     HeaderData.RecordingMetadata = GetRecordingMetadata(HeaderData);
-    ProgressDialog.IncrementSub();
+    ProgressDialog.IncrementSub(1);
     
     //Get ReplayMetadata
     ProgressDialog.SubMessage("Getting Replay Metadata");
     HeaderData.ReplayMetadata = GetReplayMetadata(HeaderData);
-    ProgressDialog.IncrementSub();
+    ProgressDialog.IncrementSub(1);
     
     //Get CarsSeen
     ProgressDialog.SubMessage("Getting Cars Seen");
     HeaderData.CarsSeen = GetCarsSeen(HeaderData);
-    ProgressDialog.IncrementSub();
+    ProgressDialog.IncrementSub(1);
     
     ProgressDialog.IncrementMain();
     return HeaderData;
@@ -258,8 +258,11 @@ function SplitKeyframes(InString, TotalKeyframes)
         if(bHaveKeyframe === true)
         {
             ++KeyframesFound;
-            ProgressDialog.IncrementSub();
-            ProgressDialog.SubMessage(KeyframesFound + "/" + TotalKeyframes);
+            if(KeyframesFound % ProgressSteps == 0)
+            {
+                ProgressDialog.IncrementSub(ProgressSteps);
+                ProgressDialog.SubMessage(KeyframesFound + "/" + TotalKeyframes);
+            }
             
             //Increment the end to get the last closing brace
             ++IdxEnd;
@@ -279,7 +282,7 @@ function SplitKeyframes(InString, TotalKeyframes)
     return KeyframeStrings;
 }
 
-function GetKeyframes(KeyframeStrings)
+function GetKeyframes(KeyframeStrings, HeaderData)
 {
     ProgressDialog.MainMessage("Parsing keyframes");
     ProgressDialog.SetSubMaxValue(KeyframeStrings.length);
@@ -289,11 +292,14 @@ function GetKeyframes(KeyframeStrings)
     
     for(var i = 0; i < KeyframeStrings.length;)
     {        
-        Keyframes.push(GetKeyframeData(KeyframeStrings[i]));
+        Keyframes.push(GetKeyframeData(KeyframeStrings[i], HeaderData));
         
         ++i;
-        ProgressDialog.IncrementSub();
-        ProgressDialog.SubMessage(i + "/" + KeyframeStrings.length);
+        if(i % ProgressSteps == 0)
+        {
+            ProgressDialog.IncrementSub(ProgressSteps);
+            ProgressDialog.SubMessage(i + "/" + KeyframeStrings.length);
+        }
     }
 
     ProgressDialog.IncrementMain();
@@ -352,8 +358,11 @@ function GetKeyframeArrays(Keyframes)
         Arrays.BallRotationZ.push(Keyframes[i].Ball.Rotation.Z);
         
         ++i;
-        ProgressDialog.IncrementSub();
-        ProgressDialog.SubMessage(i + "/" + Keyframes.length);
+        if(i % ProgressSteps == 0)
+        {
+            ProgressDialog.IncrementSub(ProgressSteps);
+            ProgressDialog.SubMessage(i + "/" + Keyframes.length);
+        }
     }
     
     ProgressDialog.IncrementMain();
@@ -374,7 +383,7 @@ function ApplyKeyframes(Arrays, HeaderData)
     var Objects = CreateCompObjects(MyComp, HeaderData);
     var CameraLayer = Objects.CameraLayer;
     var BallLayer = Objects.BallLayer;
-    ProgressDialog.IncrementSub();
+    ProgressDialog.IncrementSub(1);
     
     //Apply the arrays
     ProgressDialog.SubMessage("Applying arrays");
@@ -391,7 +400,7 @@ function ApplyKeyframes(Arrays, HeaderData)
     BallLayer.property("Transform").property("X Rotation").setValuesAtTimes(   Arrays.Time, Arrays.BallRotationX    );
     BallLayer.property("Transform").property("Y Rotation").setValuesAtTimes(   Arrays.Time, Arrays.BallRotationY    );
     BallLayer.property("Transform").property("Z Rotation").setValuesAtTimes(   Arrays.Time, Arrays.BallRotationZ    );
-    ProgressDialog.IncrementSub();
+    ProgressDialog.IncrementSub(1);
     
     //End undo group
     app.endUndoGroup();
@@ -556,36 +565,76 @@ function GetReplayMetadata(HeaderData)
 function GetCarsSeen(HeaderData)
 {
     var CarsSeen = [];
-    var CurrentCar = new Object();
     
-    //Skip the first line "CARS SEEN"
-    ++HeaderData.CurrentLine;
+    //Skip the first line "CARS SEEN" and the opening brace
+    HeaderData.CurrentLine += 2;
     
     //Loop through all the cars seen lines until an empty line is found
     while(HeaderData.CurrentLine < HeaderData.Lines.length)
     {
-        var ThisLine = HeaderData.Lines[HeaderData.CurrentLine];
+        //Trim the whitespace off the front and check if the group is done
+        var ThisLine = RemoveWhitespace(HeaderData.Lines[HeaderData.CurrentLine]);
         ++HeaderData.CurrentLine;
-        
-        if(ThisLine === "")
+        if(ThisLine == "}")
         {
             break;
         }
-    
-        /*
-            
-            TODO: Parse cars seen in case cars are ever added to this parser
-            
-        */
+        
+        //Split the line by :
+        var SplitLine = GetSplitKeyframeLine(ThisLine);
+        
+        //Get information for the next car
+        var CarSeenIndex = SplitLine.Label;
+        var CarSeen = GetCarSeen(HeaderData, CarSeenIndex);
+        CarsSeen.push(CarSeen);
     }
 
     return CarsSeen;
 }
 
+function GetCarSeen(HeaderData, CarSeenIndex)
+{
+    var CarSeen = new Object();
+    CarSeen.Index = -1;
+    CarSeen.Name = "UNNAMED CAR";
+    CarSeen.ID = "NO ID";
+    CarSeen.Body = -1;
+    CarSeen.FrontWheelRadius = -1.0;
+    CarSeen.BackWheelRadius = -1.0;
+    
+    //Skip the car index since that was retrieved in the parent function
+    ++HeaderData.CurrentLine;
+    
+    while(true)
+    {
+        //Trim the whitespace off the front and check if the group is done
+        var ThisLine = RemoveWhitespace(HeaderData.Lines[HeaderData.CurrentLine]);
+        ++HeaderData.CurrentLine;
+        if(ThisLine == "}")
+        {
+            break;
+        }
+        
+        //Split the line by :
+        var SplitLine = GetSplitKeyframeLine(ThisLine);
+        
+        //Get all car seen data
+        if(SplitLine.Label == "Body")                    { CarSeen.Body = parseInt(SplitLine.Data);               }
+        else if(SplitLine.Label == "ID")                 { CarSeen.ID   = SplitLine.Data;                         }
+        else if(SplitLine.Label == "Front Wheel Radius") { CarSeen.FrontWheelRadius = parseFloat(SplitLine.Data); }
+        else if(SplitLine.Label == "Back Wheel Radius")  { CarSeen.BackWheelRadius  = parseFloat(SplitLine.Data); }
+    }
+    
+    //Fill in last values
+    CarSeen.Index = CarSeenIndex;
+    CarSeen.Name = "Car " + CarSeenIndex + ": " + CarSeen.ID + " Null Object";
+    
+    return CarSeen;
+}
 //
 
 // KEYFRAME PARSING //
-function GetKeyframeData(KeyframeString)
+function GetKeyframeData(KeyframeString, HeaderData)
 {
     var Keyframe = new Object();
     Keyframe.FrameNumber = -1;
@@ -626,10 +675,10 @@ function GetKeyframeData(KeyframeString)
                 }
                 case 1:
                 {
-                    if(SplitLine.Label == "B")       { Keyframe.Ball = GetBallData(Keyframe, Lines);     }
-                    else if(SplitLine.Label == "CM") { Keyframe.Camera = GetCameraData(Keyframe, Lines); }
-                    else if(SplitLine.Label == "CR") { Keyframe.Cars = GetCarsData(Keyframe, Lines);     }
-                    else if(SplitLine.Label == "T")  { Keyframe.Time = GetTimeData(Keyframe, Lines);     }
+                    if(SplitLine.Label == "B")       { Keyframe.Ball = GetBallData(Keyframe, Lines);             }
+                    else if(SplitLine.Label == "CM") { Keyframe.Camera = GetCameraData(Keyframe, Lines);         }
+                    else if(SplitLine.Label == "CR") { Keyframe.Cars = GetCarsData(Keyframe, Lines, HeaderData); }
+                    else if(SplitLine.Label == "T")  { Keyframe.Time = GetTimeData(Keyframe, Lines);             }
                     break;
                 }
             }
@@ -733,9 +782,9 @@ function GetTimeData(Keyframe, Lines)
     return TimeData;
 }
 
-function GetCarsData(Keyframe, Lines)
+function GetCarsData(Keyframe, Lines, HeaderData)
 {
-    var Cars = [];
+    var Cars = GetNullCars(HeaderData.CarsSeen.length);
     
     while(true)
     {
@@ -750,14 +799,50 @@ function GetCarsData(Keyframe, Lines)
         //Split the line by :
         var SplitLine = GetSplitKeyframeLine(ThisLine);
         
-        //Iterate through each of the cars
+        //Get information for the next car
         var CarSeenIndex = SplitLine.Label;
         var Car = GetCarData(Keyframe, Lines);
         Car.CarSeenIndex = CarSeenIndex;
-        Cars.push(Car);
+        Cars[CarSeenIndex] = Car;
     }
 
     return Cars;
+}
+
+function GetNullCars(NumCars)
+{
+    var NullCars = [];
+    
+    for(var i = 0; i < NumCars; ++i)
+    {
+        var Car = new Object();
+        Car.CarSeenIndex = i;
+        Car.bBoosting = false;
+        Car.Location = ParseVector("0,0,0");
+        Car.Rotation = ParseQuat("1,0,0,0");
+        Car.Wheels = GetNullWheels(4);
+        
+        NullCars.push(Car);
+    }
+
+    return NullCars;
+}
+
+function GetNullWheels(NumWheels)
+{
+    var NullWheels = [];
+    
+    for(var i = 0; i < NumWheels; ++i)
+    {
+        var Wheel = new Object();
+        Wheel.SteerAmount        = 0;
+        Wheel.SuspensionDistance = 0;
+        Wheel.SpinSpeed          = 0;
+        
+        NullWheels.push(Wheel);
+    }
+    
+    return NullWheels;
 }
 
 function GetCarData(Keyframe, Lines)
@@ -786,10 +871,10 @@ function GetCarData(Keyframe, Lines)
         var SplitLine = GetSplitKeyframeLine(ThisLine);
         
         //Get all car data
-        if(SplitLine.Label == "B")      { Car.bBoosting = parseInt(SplitLine.Data);     }
-        else if(SplitLine.Label == "L") { Car.Location = ParseVector(SplitLine.Data);   }
-        else if(SplitLine.Label == "R") { Car.Rotation = ParseQuat(SplitLine.Data);     }
-        else if(SplitLine.Label == "W") { Car.Wheels = GetWheelsData(Keyframe, Lines);  }
+        if(SplitLine.Label == "B")      { Car.bBoosting = parseInt(SplitLine.Data);       }
+        else if(SplitLine.Label == "L") { Car.Location  = ParseVector(SplitLine.Data);    }
+        else if(SplitLine.Label == "R") { Car.Rotation  = ParseQuat(SplitLine.Data);      }
+        else if(SplitLine.Label == "W") { Car.Wheels    = GetWheelsData(Keyframe, Lines); }
     }
     
     return Car;
@@ -808,25 +893,42 @@ function GetWheelsData(Keyframe, Lines)
         {
             break;
         }
-        
-        Wheels.push(GetWheelData(ThisLine));
+    
+        //Get information for the next wheel
+        Wheels.push(GetWheelData(Keyframe, Lines));
     }
         
     return Wheels;    
 }
 
-function GetWheelData(ThisLine)
+function GetWheelData(Keyframe, Lines)
 {
     var Wheel = new Object();
+    Wheel.SteerAmount        = 0;
+    Wheel.SuspensionDistance = 0;
+    Wheel.SpinSpeed          = 0;
     
-    //Split the line by :
-    var SplitLine = GetSplitKeyframeLine(ThisLine);
+    //Skip the wheel index
+    ++Keyframe.CurrentLine;
     
-    //Split the line by "," and get data
-    var Data = SplitLine.Data.split(",");
-    Wheel.SteerAmount        = parseFloat(Data[0]);
-    Wheel.SuspensionDistance = parseFloat(Data[1]);
-    Wheel.SpinSpeed          = parseFloat(Data[2]);
+    while(true)
+    {
+        //Trim the whitespace off the front and check if the group is done
+        var ThisLine = RemoveWhitespace(Lines[Keyframe.CurrentLine]);
+        ++Keyframe.CurrentLine;
+        if(ThisLine == "}")
+        {
+            break;
+        }
+        
+        //Split the line by :
+        var SplitLine = GetSplitKeyframeLine(ThisLine);
+        
+        //Get all wheel data
+        if(SplitLine.Label == "SA")      { Wheel.SteerAmount        = parseFloat(SplitLine.Data); }
+        else if(SplitLine.Label == "SD") { Wheel.SuspensionDistance = parseFloat(SplitLine.Data); }
+        else if(SplitLine.Label == "SS") { Wheel.SpinSpeed          = parseFloat(SplitLine.Data); }
+    }
     
     return Wheel;
 }
@@ -961,26 +1063,26 @@ function CreateBall(MyComp)
     return BallLayer;
 }
 
-function CreateCar(MyComp, CarData)
-{
-    var ThisCar = MyComp.layers.addNull();
-    ThisCar.source.name = CarData.CarName;
-    ThisCar.threeDLayer = true;
-    ThisCar.property("Position").dimensionsSeparated = true;
-    
-    return ThisCar;
-}
-
 function CreateCars(MyComp, HeaderData)
 {
     var CarLayers = [];
     
-    for(CarSeen in HeaderData.CarsSeen)
+    for(var i = 0; i < HeaderData.CarsSeen.length; ++i)
     {
-        CarLayers.push(CreateCar(MyComp, CarSeen));
+        CarLayers.push(CreateCar(MyComp, HeaderData.CarsSeen[i]));
     }
 
     return CarLayers;
+}
+
+function CreateCar(MyComp, CarSeen)
+{
+    var ThisCar = MyComp.layers.addNull();
+    ThisCar.source.name = CarSeen.Name;
+    ThisCar.threeDLayer = true;
+    ThisCar.property("Position").dimensionsSeparated = true;
+    
+    return ThisCar;
 }
 
 function CreateBlueGoalLabel(MyComp)
@@ -1032,9 +1134,9 @@ function RemoveCompObjects(Objects)
     Objects.BlueGoalLabel.remove();
     Objects.OrangeGoalLabel.remove();
     
-    for(CarLayer in Objects.CarLayers)
+    for(var i = 0; i < Objects.CarLayers.length; ++i)
     {
-        CarLayer.remove();
+        Objects.CarLayers[i].remove();
     }
 }
 //
