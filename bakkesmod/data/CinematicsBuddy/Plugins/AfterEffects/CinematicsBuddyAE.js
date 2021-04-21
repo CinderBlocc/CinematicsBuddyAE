@@ -1,22 +1,6 @@
 ﻿//Written by: SwiFT EQ and CinderBlock
 //Version 0.9.9
 
-/*
-
-	TODO:
-        - Progress bar seems to lag behind and freeze up, then magically finish the process
-            - Make progress bar less intensive so it can keep up with script execution
-                - Update every 5 or 10 steps?
-                - Reduce number of "TheWindow.update()" calls
-
-        - Fix wheel formatting
-
-        - Add all CarsSeen as null objects
-            - Similar to Maxscript, if the car doesn't have animation for that frame, set it to 0,0,0 in both location and rotation
-                - Maybe also set it's opacity to 0 while it's in an invalid state? Then people could wire their effects to the opacity track
-                - Probably should initialize the whole array of car animations to null first, then give proper values if the keyframe exists for that car
-*/
-
 // GLOBAL VARIABLES //
 ProgressDialog();
 ProgressSteps = 20;
@@ -138,7 +122,7 @@ function main()
         var Keyframes = GetKeyframes(KeyframeStrings, HeaderData);
         
         //Compile all of the keyframes into individual arrays
-        var Arrays = GetKeyframeArrays(Keyframes);
+        var Arrays = GetKeyframeArrays(Keyframes, HeaderData);
         
         //Create camera and layers and apply keyframe data
         ApplyKeyframes(Arrays, HeaderData);
@@ -306,7 +290,7 @@ function GetKeyframes(KeyframeStrings, HeaderData)
     return Keyframes;
 }
 
-function GetKeyframeArrays(Keyframes)
+function GetKeyframeArrays(Keyframes, HeaderData)
 {
     ProgressDialog.MainMessage("Compiling keyframes");
     ProgressDialog.SetSubMaxValue(Keyframes.length);
@@ -318,44 +302,54 @@ function GetKeyframeArrays(Keyframes)
     Arrays.Time = [];
     
     //Camera arrays
-    Arrays.CameraFOV = [];
-    Arrays.CameraLocationX = [];
-    Arrays.CameraLocationY = [];
-    Arrays.CameraLocationZ = [];
-    Arrays.CameraRotationX = [];
-    Arrays.CameraRotationY = [];
-    Arrays.CameraRotationZ = [];
+    var CameraData = new Object();
+    CameraData.FOV = [];
+    CameraData.Location = BuildVectorArrays();
+    CameraData.Rotation = BuildVectorArrays();
+    Arrays.Camera = CameraData;
     
     //Ball arrays
-    Arrays.BallLocationX = [];
-    Arrays.BallLocationY = [];
-    Arrays.BallLocationZ = [];
-    Arrays.BallRotationX = [];
-    Arrays.BallRotationY = [];
-    Arrays.BallRotationZ = [];
+    var BallData = new Object();
+    BallData.Location = BuildVectorArrays();
+    BallData.Rotation = BuildVectorArrays();
+    Arrays.Ball = BallData;
+    
+    //Car arrays
+    Arrays.Cars = [];
+    for(var i = 0; i < HeaderData.CarsSeen.length; ++i)
+    {
+        var CarArray = new Object();
+        CarArray.bIsNull  = [];
+        CarArray.Location = BuildVectorArrays();
+        CarArray.Rotation = BuildVectorArrays();
+        
+        Arrays.Cars.push(CarArray);
+    }
 
     //Loop through all keyframes and add their data to Arrays
     for(var i = 0; i < Keyframes.length;)
     {
+        var ThisKeyframe = Keyframes[i];
+        
         //Time
-        Arrays.Time.push(Keyframes[i].Time.Time);
+        Arrays.Time.push(ThisKeyframe.Time.Time);
         
         //Camera
-        Arrays.CameraFOV.push(Keyframes[i].Camera.FOV);
-        Arrays.CameraLocationX.push(Keyframes[i].Camera.Location.X);
-        Arrays.CameraLocationY.push(Keyframes[i].Camera.Location.Y);
-        Arrays.CameraLocationZ.push(Keyframes[i].Camera.Location.Z);
-        Arrays.CameraRotationX.push(Keyframes[i].Camera.Rotation.X);
-        Arrays.CameraRotationY.push(Keyframes[i].Camera.Rotation.Y);
-        Arrays.CameraRotationZ.push(Keyframes[i].Camera.Rotation.Z);
+        Arrays.Camera.FOV.push(ThisKeyframe.Camera.FOV);
+        MapVector(Arrays.Camera.Location, ThisKeyframe.Camera.Location);
+        MapVector(Arrays.Camera.Rotation, ThisKeyframe.Camera.Rotation);
         
         //Ball
-        Arrays.BallLocationX.push(Keyframes[i].Ball.Location.X);
-        Arrays.BallLocationY.push(Keyframes[i].Ball.Location.Y);
-        Arrays.BallLocationZ.push(Keyframes[i].Ball.Location.Z);
-        Arrays.BallRotationX.push(Keyframes[i].Ball.Rotation.X);
-        Arrays.BallRotationY.push(Keyframes[i].Ball.Rotation.Y);
-        Arrays.BallRotationZ.push(Keyframes[i].Ball.Rotation.Z);
+        MapVector(Arrays.Ball.Location, ThisKeyframe.Ball.Location);
+        MapVector(Arrays.Ball.Rotation, ThisKeyframe.Ball.Rotation);
+        
+        //Cars
+        for(var j = 0; j < HeaderData.CarsSeen.length; ++j)
+        {
+            Arrays.Cars[j].bIsNull.push(ThisKeyframe.Cars[j].bIsNull ? 0 : 100);
+            MapVector(Arrays.Cars[j].Location, ThisKeyframe.Cars[j].Location);
+            MapVector(Arrays.Cars[j].Rotation, ThisKeyframe.Cars[j].Rotation);
+        }
         
         ++i;
         if(i % ProgressSteps == 0)
@@ -383,31 +377,47 @@ function ApplyKeyframes(Arrays, HeaderData)
     var Objects = CreateCompObjects(MyComp, HeaderData);
     var CameraLayer = Objects.CameraLayer;
     var BallLayer = Objects.BallLayer;
+    var CarLayers = Objects.CarLayers;
     ProgressDialog.IncrementSub(1);
     
-    //Apply the arrays
+    //Begin applying the arrays
     ProgressDialog.SubMessage("Applying arrays");
-    CameraLayer.property("Camera Options").property("Zoom").setValuesAtTimes(  Arrays.Time, Arrays.CameraFOV        );
-    CameraLayer.property("Transform").property("X Position").setValuesAtTimes( Arrays.Time, Arrays.CameraLocationX  );
-    CameraLayer.property("Transform").property("Y Position").setValuesAtTimes( Arrays.Time, Arrays.CameraLocationY  );
-    CameraLayer.property("Transform").property("Z Position").setValuesAtTimes( Arrays.Time, Arrays.CameraLocationZ  );
-    CameraLayer.property("Transform").property("X Rotation").setValuesAtTimes( Arrays.Time, Arrays.CameraRotationX  );
-    CameraLayer.property("Transform").property("Y Rotation").setValuesAtTimes( Arrays.Time, Arrays.CameraRotationY  );
-    CameraLayer.property("Transform").property("Z Rotation").setValuesAtTimes( Arrays.Time, Arrays.CameraRotationZ  );
-    BallLayer.property("Transform").property("X Position").setValuesAtTimes(   Arrays.Time, Arrays.BallLocationX    );
-    BallLayer.property("Transform").property("Y Position").setValuesAtTimes(   Arrays.Time, Arrays.BallLocationY    );
-    BallLayer.property("Transform").property("Z Position").setValuesAtTimes(   Arrays.Time, Arrays.BallLocationZ    );
-    BallLayer.property("Transform").property("X Rotation").setValuesAtTimes(   Arrays.Time, Arrays.BallRotationX    );
-    BallLayer.property("Transform").property("Y Rotation").setValuesAtTimes(   Arrays.Time, Arrays.BallRotationY    );
-    BallLayer.property("Transform").property("Z Rotation").setValuesAtTimes(   Arrays.Time, Arrays.BallRotationZ    );
+    
+    //Camera
+    CameraLayer.property("Camera Options").property("Zoom").setValuesAtTimes(Arrays.Time, Arrays.Camera.FOV);
+    ApplyVectorKeyframe(CameraLayer, Arrays.Time, Arrays.Camera.Location, true);
+    ApplyVectorKeyframe(CameraLayer, Arrays.Time, Arrays.Camera.Rotation, false);
+    
+    //Ball
+    ApplyVectorKeyframe(BallLayer, Arrays.Time, Arrays.Ball.Location, true);
+    ApplyVectorKeyframe(BallLayer, Arrays.Time, Arrays.Ball.Rotation, false);
+    
+    //Cars
+    for(var i = 0; i < HeaderData.CarsSeen.length; ++i)
+    {
+        var ThisCarLayer = CarLayers[i];
+        var ThisCarKeyframes = Arrays.Cars[i];
+        ThisCarLayer.property("Opacity").setValuesAtTimes(Arrays.Time, ThisCarKeyframes.bIsNull);
+        ApplyVectorKeyframe(ThisCarLayer, Arrays.Time, ThisCarKeyframes.Location, true);
+        ApplyVectorKeyframe(ThisCarLayer, Arrays.Time, ThisCarKeyframes.Rotation, false);
+    }
+    
+    //Completed task
     ProgressDialog.IncrementSub(1);
     
     //End undo group
     app.endUndoGroup();
     ProgressDialog.IncrementMain();
 }
-//
 
+function ApplyVectorKeyframe(TheLayer, TimeArray, TheVector, bLocationOrRotation)
+{
+    var TheType = bLocationOrRotation ? "Position" : "Rotation";
+    TheLayer.property("Transform").property("X " + TheType).setValuesAtTimes(TimeArray, TheVector.X);
+    TheLayer.property("Transform").property("Y " + TheType).setValuesAtTimes(TimeArray, TheVector.Y);
+    TheLayer.property("Transform").property("Z " + TheType).setValuesAtTimes(TimeArray, TheVector.Z);
+}
+//
 
 
 // UTILITY FUNCTIONS //
@@ -438,6 +448,16 @@ function GetSplitKeyframeLine(ThisLine)
     return Output;
 }
 
+function GetEmptyVector()
+{
+    var Vector = new Object();
+    Vector.X = 0;
+    Vector.Y = 0;
+    Vector.Z = 0;
+    
+    return Vector;
+}
+
 function ParseVector(VectorString)
 {    
     var VectorVals = VectorString.split(",");
@@ -465,10 +485,13 @@ function ParseQuat(QuatString)
     var H2 = 1 - (2 * qY * qY) - (2 * qZ * qZ);
     var Pitch = Math.atan2(H1, H2);
     
-    //Yaw
+    //Yaw - Clamped to [-1,1] so asin doesn't throw a NaN result
     var A1 = 2 * qX * qY;
     var A2 = 2 * qZ * qW;
-    var Yaw = Math.asin(A1 + A2);
+    var Added = A1 + A2;
+    if(Added < -1) { Added = -1; }
+    if(Added >  1) { Added =  1; }
+    var Yaw = Math.asin(Added);
     
     //Roll
     var B1 = (2 * qX * qW) - (2 * qY * qZ);
@@ -488,6 +511,25 @@ function ParseQuat(QuatString)
     Rotation.Z = NewRoll * -1;
     
     return Rotation;
+}
+
+
+function BuildVectorArrays()
+{
+    var Output = new Object();
+    
+    Output.X = [];
+    Output.Y = [];
+    Output.Z = [];
+    
+    return Output;
+}
+
+function MapVector(OutArray, InVector)
+{
+    OutArray.X.push(InVector.X);
+    OutArray.Y.push(InVector.Y);
+    OutArray.Z.push(InVector.Z);
 }
 //
 
@@ -816,10 +858,11 @@ function GetNullCars(NumCars)
     for(var i = 0; i < NumCars; ++i)
     {
         var Car = new Object();
+        Car.bIsNull = true;
         Car.CarSeenIndex = i;
         Car.bBoosting = false;
-        Car.Location = ParseVector("0,0,0");
-        Car.Rotation = ParseQuat("1,0,0,0");
+        Car.Location = GetEmptyVector();
+        Car.Rotation = GetEmptyVector();
         Car.Wheels = GetNullWheels(4);
         
         NullCars.push(Car);
@@ -848,6 +891,7 @@ function GetNullWheels(NumWheels)
 function GetCarData(Keyframe, Lines)
 {
     var Car = new Object();
+    Car.bIsNull = false;
     Car.CarSeenIndex = -1;
     Car.bBoosting = false;
     Car.Location = new Object();
