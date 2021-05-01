@@ -1,15 +1,6 @@
 ﻿//Written by: SwiFT EQ and CinderBlock
 //Version 0.9.9c
 
-/*
-    TODO:
-        - All rotations need to have a stored offsets "vector" (pitch, yaw, roll)
-        - Continue passing PreviousKeyframe down through the GetKeyframe chain
-            - Any object that reads a rotation needs to call "EulerFilter(PreviousRotation, IncomingRotation, bIgnorePreviousRotation)"
-        - Arrays need to be rebuilt for rotations
-            - Maybe just make a "MapRotator" function to go along with the "MapVector" function
-*/
-
 // GLOBAL VARIABLES //
 ProgressDialog();
 ProgressSteps = 20;
@@ -564,26 +555,6 @@ function EulerFilter(PreviousRotation, IncomingRotation, bIgnorePreviousRotation
     
     //Pass the newly modified offsets to the current rotation
     OutputRotation.Offsets = PreviousRotation.Offsets;
-    
-    /*
-    PreviousRotation: The final rotation values from the previous keyframe
-        - Stores "Offsets" which have been passed from keyframe to keyframe
-    IncomingRotation: The new unfiltered rotation values
-        - "Offsets" are null for this object. Just use/modify the ones from PreviousRotation
-    bIgnorePreviousRotation: Just return "IncomingRotation", complete with its null offsets
-        - This boolean should only be true for the first frame
-        
-    Return Value:
-        - If bIgnorePreviousRotation is false, return IncomingRotation modified by PreviousRotation's "Offsets"
-        - If bIgnorePreviousRotation is true, return IncomingRotation
-        
-    Method:
-        - If bIgnorePreviousRotation is true, skip any processing and return IncomingRotation
-        - If bIgnorePreviousRotation is false:
-            - Compare (IncomingRotation + PreviousRotation.Offsets) against PreviousRotation
-            - If there is a jump in that comparison, modify PreviousRotation.Offsets
-            - Create new 
-    */
 
     return OutputRotation;
 }
