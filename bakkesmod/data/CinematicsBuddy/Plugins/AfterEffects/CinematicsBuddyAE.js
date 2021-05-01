@@ -6,7 +6,7 @@ ProgressDialog();
 ProgressSteps = 20;
 var BlueColor = [0.35, 0.45, 0.9];
 var OrangeColor = [0.95, 0.55, 0.2];
-var bShouldEulerFilter = false;
+var bShouldEulerFilter = true;
 
 // RUN THE SCRIPT //
 main();
