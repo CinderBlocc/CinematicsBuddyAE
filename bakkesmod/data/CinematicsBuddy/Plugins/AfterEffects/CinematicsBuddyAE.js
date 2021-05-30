@@ -550,7 +550,6 @@ function EulerFilter(PreviousRotation, IncomingRotation, bIgnorePreviousRotation
         return IncomingRotation;
     }
 
-    // FOR NOW JUST RETURN IncomingRotation SO YOU CAN SEE IF ANYTHING BROKE //
     var OutputRotation = GetEmptyRotator();
     
     //Modify the incoming rotation value and the stored offsets
@@ -820,6 +819,7 @@ function GetKeyframeData(KeyframeString, HeaderData, PreviousKeyframe)
     var StackLevel = 0;
     
     //If a section doesn't exist, it won't get a previous keyframe which breaks things later
+	//Provide an empty previous keyframe to avoid breaking
     var bHaveReadBallSection = false;
     var bHaveReadCameraSection = false;
     var bHaveReadCarSection = false;
